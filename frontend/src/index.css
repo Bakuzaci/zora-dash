@@ -480,18 +480,147 @@ tbody tr:hover {
    Responsive Adjustments
    ============================================================================ */
 
+/* Tablet */
+@media (max-width: 1024px) {
+  .grid-4 { 
+    grid-template-columns: repeat(2, 1fr); 
+  }
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  :root {
+    --space-6: 16px;
+  }
+  
+  .grid-2, .grid-3 { 
+    grid-template-columns: 1fr; 
+    gap: var(--space-4);
+  }
+  
+  .grid-4 { 
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-3);
+  }
+  
+  /* Cards fill width properly */
+  .card {
+    border-radius: var(--radius-md);
+  }
+  
+  .card-header {
+    padding: var(--space-3) var(--space-4);
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  
+  .card-body {
+    padding: var(--space-3) var(--space-4);
+  }
+  
+  /* Stat cards - more compact */
+  .stat-value {
+    font-size: var(--text-xl);
+    word-break: break-all;
+  }
+  
+  .stat-label {
+    font-size: 10px;
+  }
+  
+  /* Main container padding */
+  main {
+    padding: var(--space-4) !important;
+  }
+  
+  /* Header tighter */
+  header > div {
+    padding: 0 var(--space-4) !important;
+  }
+}
+
+/* Small mobile */
+@media (max-width: 480px) {
+  .grid-4 { 
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2);
+  }
+  
+  /* Stat cards even more compact */
+  .stat-value {
+    font-size: var(--text-lg);
+  }
+  
+  .card-body {
+    padding: var(--space-3);
+  }
+  
+  /* Tables scroll horizontally */
+  th, td {
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-xs);
+  }
+  
+  th:first-child,
+  td:first-child {
+    padding-left: var(--space-2);
+  }
+  
+  /* Avatars smaller */
+  .avatar {
+    width: 28px;
+    height: 28px;
+  }
+  
+  .avatar-sm {
+    width: 20px;
+    height: 20px;
+  }
+  
+  /* Coin names truncate */
+  .coin-name {
+    max-width: 100px;
+  }
+  
+  .coin-info {
+    max-width: 120px;
+  }
+  
+  /* Change badges smaller */
+  .change {
+    font-size: var(--text-xs);
+    padding: 2px 6px;
+  }
+  
+  /* Rank smaller */
+  .rank {
+    width: 20px;
+    height: 20px;
+    font-size: 10px;
+  }
+}
+
+/* Tab navigation mobile */
 @media (max-width: 640px) {
   .nav-tabs {
     flex-wrap: wrap;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    width: 100%;
   }
   
-  .stat-value {
-    font-size: var(--text-2xl);
-  }
-  
-  th, td {
+  .nav-tab {
+    min-height: 36px;
     padding: var(--space-2) var(--space-3);
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
+    flex: 1 1 auto;
+    justify-content: center;
+    text-align: center;
+  }
+  
+  /* Hide emoji icons on very small screens to save space */
+  .nav-tab span[aria-hidden="true"] {
+    display: none;
   }
 }
 

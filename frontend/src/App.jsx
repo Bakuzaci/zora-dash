@@ -66,22 +66,22 @@ function Header() {
 
 function StatsBar({ stats }) {
   return (
-    <section aria-label="Key statistics" className="grid-4" style={{ marginBottom: 24 }}>
-      <article className="card card-body">
-        <p className="stat-label" id="vol-label">Top 10 Volume (24h)</p>
+    <section aria-label="Key statistics" className="grid-4" style={{ marginBottom: 'var(--space-6)' }}>
+      <article className="card card-body" style={{ minHeight: 0 }}>
+        <p className="stat-label" id="vol-label">Vol 24h</p>
         <p className="stat-value" aria-labelledby="vol-label">{formatNumber(stats?.total_volume_24h)}</p>
       </article>
-      <article className="card card-body">
-        <p className="stat-label" id="mcap-label">Top 10 Market Cap</p>
+      <article className="card card-body" style={{ minHeight: 0 }}>
+        <p className="stat-label" id="mcap-label">Market Cap</p>
         <p className="stat-value" aria-labelledby="mcap-label">{formatNumber(stats?.top_coins_mcap)}</p>
       </article>
-      <article className="card card-body">
+      <article className="card card-body" style={{ minHeight: 0 }}>
         <p className="stat-label" id="chain-label">Chain</p>
-        <p className="stat-value" style={{ fontSize: 20 }} aria-labelledby="chain-label">Base</p>
+        <p className="stat-value" aria-labelledby="chain-label">Base</p>
       </article>
-      <article className="card card-body">
-        <p className="stat-label" id="source-label">Data Source</p>
-        <p className="stat-value" style={{ fontSize: 20 }} aria-labelledby="source-label">Zora SDK</p>
+      <article className="card card-body" style={{ minHeight: 0 }}>
+        <p className="stat-label" id="source-label">Source</p>
+        <p className="stat-value" aria-labelledby="source-label">Zora</p>
       </article>
     </section>
   )
