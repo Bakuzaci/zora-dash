@@ -3,11 +3,13 @@ Zora Data Dashboard - Backend API
 Aggregates data from Zora's public SDK API
 """
 import asyncio
+import re
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+from collections import defaultdict
 
 import httpx
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 # ============================================================================
@@ -27,6 +29,58 @@ async def zora_get(endpoint: str, params: dict = None) -> dict:
         except Exception as e:
             print(f"[Zora API] Error: {e}")
     return {}
+
+
+# ============================================================================
+# Topic/Category Clustering
+# ============================================================================
+
+TOPIC_KEYWORDS = {
+    "AI & Tech": ["ai", "gpt", "bot", "neural", "machine", "deep", "llm", "claude", "openai", "agent", "robot", "cyber", "tech", "digital", "compute", "quantum"],
+    "Politics": ["trump", "biden", "maga", "democrat", "republican", "election", "president", "politics", "vote", "congress", "senate", "government", "potus", "kamala", "elon"],
+    "Animals": ["dog", "cat", "doge", "shiba", "inu", "pepe", "frog", "monkey", "ape", "bear", "bull", "wolf", "bird", "fish", "penguin", "duck", "owl", "bunny"],
+    "Finance": ["gold", "silver", "oil", "stock", "treasury", "reserve", "bank", "dollar", "forex", "trade", "invest", "yield", "bond", "etf", "index", "hedge"],
+    "Gaming": ["game", "play", "nft", "pixel", "arcade", "quest", "guild", "rpg", "level", "boss", "loot", "battle", "hero", "warrior", "sword"],
+    "Culture": ["meme", "lol", "based", "chad", "wojak", "cope", "seethe", "ratio", "wagmi", "gm", "ngmi", "hodl", "moon", "wen", "ser", "anon"],
+    "Food": ["pizza", "burger", "taco", "sushi", "coffee", "beer", "wine", "food", "eat", "cook", "chef", "kitchen", "drink", "snack"],
+    "Sports": ["sport", "ball", "goal", "team", "win", "champion", "nba", "nfl", "soccer", "football", "basketball", "baseball"],
+    "Music & Art": ["music", "song", "art", "artist", "paint", "draw", "beat", "sound", "audio", "visual", "creative", "studio"],
+    "Crypto Native": ["eth", "bitcoin", "btc", "solana", "base", "chain", "defi", "dao", "token", "swap", "pool", "stake", "yield", "vault", "bridge"],
+}
+
+def categorize_coin(coin: dict) -> str:
+    """Categorize a coin based on name/description keywords."""
+    text = f"{coin.get('name', '')} {coin.get('description', '')} {coin.get('symbol', '')}".lower()
+    
+    scores = {}
+    for topic, keywords in TOPIC_KEYWORDS.items():
+        score = sum(1 for kw in keywords if kw in text)
+        if score > 0:
+            scores[topic] = score
+    
+    if scores:
+        return max(scores, key=scores.get)
+    return "Other"
+
+
+def cluster_coins_by_topic(coins: List[dict]) -> Dict[str, List[dict]]:
+    """Group coins by topic/category."""
+    clusters = defaultdict(list)
+    for coin in coins:
+        topic = categorize_coin(coin)
+        coin["topic"] = topic
+        clusters[topic].append(coin)
+    
+    # Sort clusters by total volume
+    sorted_clusters = {}
+    for topic, topic_coins in sorted(
+        clusters.items(),
+        key=lambda x: sum(c.get("volume_24h", 0) or 0 for c in x[1]),
+        reverse=True
+    ):
+        sorted_clusters[topic] = topic_coins
+    
+    return sorted_clusters
 
 
 # ============================================================================
@@ -75,17 +129,50 @@ async def get_trader_leaderboard(count: int = 50) -> List[dict]:
     return [format_trader(e.get("node", {})) for e in edges]
 
 
-async def get_featured_creators(count: int = 20) -> List[dict]:
-    """Get featured creators this week."""
-    data = await zora_get("/featuredCreators", {"first": count})
-    edges = data.get("traderLeaderboardFeaturedCreators", {}).get("edges", [])
-    return [format_creator(e.get("node", {})) for e in edges]
+async def get_top_creators(count: int = 50) -> List[dict]:
+    """Get most valuable creator coins (proxy for earnings)."""
+    data = await zora_get("/explore", {"listType": "MOST_VALUABLE_CREATORS", "count": count})
+    edges = data.get("exploreList", {}).get("edges", [])
+    return [format_creator_coin(e.get("node", {})) for e in edges]
+
+
+async def get_coin_swaps(address: str, count: int = 50) -> List[dict]:
+    """Get recent swaps for a coin."""
+    data = await zora_get("/coinSwaps", {"address": address, "chain": 8453, "count": count})
+    swaps = data.get("zora20Token", {}).get("swapActivities", {}).get("edges", [])
+    return [format_swap(e.get("node", {})) for e in swaps]
+
+
+async def get_whale_trades(min_usd: float = 1000) -> List[dict]:
+    """Get large trades from recently traded coins."""
+    # Get recently active coins
+    active = await get_last_traded(20)
+    
+    whales = []
+    # Check top 5 most active coins for whale trades
+    for coin in active[:5]:
+        if not coin.get("address"):
+            continue
+        swaps = await get_coin_swaps(coin["address"], 20)
+        for swap in swaps:
+            if swap.get("amount_usd", 0) >= min_usd:
+                swap["coin"] = {
+                    "address": coin["address"],
+                    "name": coin["name"],
+                    "symbol": coin["symbol"],
+                    "image": coin.get("image"),
+                }
+                whales.append(swap)
+    
+    # Sort by amount descending
+    whales.sort(key=lambda x: x.get("amount_usd", 0), reverse=True)
+    return whales[:50]
 
 
 async def get_coin_details(address: str) -> dict:
     """Get detailed info for a specific coin."""
     data = await zora_get("/coin", {"address": address, "chain": 8453})
-    return format_coin_detail(data.get("data", {}).get("zora20Token", {}))
+    return format_coin_detail(data.get("zora20Token", {}))
 
 
 async def get_profile(identifier: str) -> dict:
@@ -121,6 +208,7 @@ def format_coin(node: dict) -> dict:
         "creator_handle": creator.get("handle"),
         "creator_avatar": get_avatar(creator),
         "chain_id": node.get("chainId", 8453),
+        "coin_type": node.get("coinType"),
     }
 
 
@@ -130,7 +218,6 @@ def format_coin_detail(node: dict) -> dict:
     base.update({
         "total_supply": node.get("totalSupply"),
         "token_uri": node.get("tokenUri"),
-        "coin_type": node.get("coinType"),
     })
     return base
 
@@ -147,14 +234,56 @@ def format_trader(node: dict) -> dict:
     }
 
 
-def format_creator(node: dict) -> dict:
-    """Format featured creator entry."""
-    profile = node.get("profile", {}) or {}
+def format_creator_coin(node: dict) -> dict:
+    """Format creator coin with earnings estimate."""
+    creator = node.get("creatorProfile", {}) or {}
+    avatar = get_avatar(creator)
+    
+    # Creator earns from total volume (fee = ~1% typically)
+    total_vol = safe_float(node.get("totalVolume")) or 0
+    estimated_earnings = total_vol * 0.01  # 1% creator fee estimate
+    
     return {
-        "handle": profile.get("handle"),
-        "avatar": get_avatar(profile),
-        "bio": profile.get("bio"),
-        "followers": profile.get("followerCount"),
+        "handle": creator.get("handle") or node.get("name"),
+        "avatar": avatar,
+        "address": node.get("address"),
+        "name": node.get("name"),
+        "symbol": node.get("symbol"),
+        "market_cap": safe_float(node.get("marketCap")),
+        "total_volume": total_vol,
+        "volume_24h": safe_float(node.get("volume24h")),
+        "estimated_earnings": estimated_earnings,
+        "unique_holders": node.get("uniqueHolders"),
+        "created_at": node.get("createdAt"),
+        "twitter": get_social(creator, "twitter"),
+        "farcaster": get_social(creator, "farcaster"),
+    }
+
+
+def format_swap(node: dict) -> dict:
+    """Format swap/trade data."""
+    price_info = node.get("currencyAmountWithPrice", {}) or {}
+    currency = price_info.get("currencyAmount", {}) or {}
+    sender = node.get("senderProfile", {}) or {}
+    
+    amount_usd = safe_float(price_info.get("priceUsdc")) or 0
+    token_amount = safe_float(currency.get("amountDecimal")) or 0
+    
+    # Calculate USD value of the trade
+    if amount_usd > 0 and token_amount > 0:
+        # priceUsdc is per token, multiply by amount
+        trade_usd = amount_usd * token_amount
+    else:
+        trade_usd = 0
+    
+    return {
+        "tx_hash": node.get("transactionHash"),
+        "type": node.get("activityType"),  # BUY or SELL
+        "amount_usd": trade_usd,
+        "token_amount": token_amount,
+        "timestamp": node.get("blockTimestamp"),
+        "trader_address": node.get("senderAddress"),
+        "trader_handle": sender.get("handle"),
     }
 
 
@@ -165,6 +294,13 @@ def get_avatar(profile: dict) -> Optional[str]:
     return preview.get("small") or preview.get("medium")
 
 
+def get_social(profile: dict, platform: str) -> Optional[str]:
+    """Get social account from profile."""
+    socials = profile.get("socialAccounts", {}) or {}
+    account = socials.get(platform, {}) or {}
+    return account.get("username") or account.get("handle")
+
+
 def safe_float(val) -> Optional[float]:
     """Safely convert to float."""
     if val is None:
@@ -173,6 +309,31 @@ def safe_float(val) -> Optional[float]:
         return float(val)
     except:
         return None
+
+
+# ============================================================================
+# WebSocket for Real-time Whale Alerts
+# ============================================================================
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+    
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+    
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+    
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except:
+                pass
+
+manager = ConnectionManager()
 
 
 # ============================================================================
@@ -258,16 +419,90 @@ async def api_coin_details(address: str):
     return await get_coin_details(address)
 
 
+@app.get("/api/coins/{address}/swaps")
+async def api_coin_swaps(address: str, count: int = Query(50, ge=1, le=100)):
+    """Get recent swaps for a coin."""
+    return await get_coin_swaps(address, count)
+
+
+# ============================================================================
+# Topic Clustering
+# ============================================================================
+
+@app.get("/api/topics")
+async def api_topics():
+    """Get coins clustered by topic/category."""
+    # Fetch top coins by volume (most active topics)
+    coins = await get_top_volume(100)
+    clusters = cluster_coins_by_topic(coins)
+    
+    # Build summary
+    result = []
+    for topic, topic_coins in clusters.items():
+        total_vol = sum(c.get("volume_24h", 0) or 0 for c in topic_coins)
+        total_mcap = sum(c.get("market_cap", 0) or 0 for c in topic_coins)
+        result.append({
+            "topic": topic,
+            "coin_count": len(topic_coins),
+            "total_volume_24h": total_vol,
+            "total_market_cap": total_mcap,
+            "top_coins": topic_coins[:5],
+        })
+    
+    return result
+
+
+# ============================================================================
+# Creator Earnings
+# ============================================================================
+
+@app.get("/api/creators")
+async def api_top_creators(count: int = Query(50, ge=1, le=100)):
+    """Get top creators by estimated earnings."""
+    creators = await get_top_creators(count)
+    # Sort by estimated earnings
+    creators.sort(key=lambda x: x.get("estimated_earnings", 0), reverse=True)
+    return creators
+
+
+# ============================================================================
+# Whale Alerts
+# ============================================================================
+
 @app.get("/api/traders")
 async def api_trader_leaderboard(count: int = Query(50, ge=1, le=100)):
     """Get trader leaderboard for this week."""
     return await get_trader_leaderboard(count)
 
 
-@app.get("/api/creators")
-async def api_featured_creators(count: int = Query(20, ge=1, le=50)):
-    """Get featured creators."""
-    return await get_featured_creators(count)
+@app.get("/api/whales")
+async def api_whale_trades(min_usd: float = Query(1000, ge=100)):
+    """Get recent whale trades (large transactions)."""
+    return await get_whale_trades(min_usd)
+
+
+@app.websocket("/ws/whales")
+async def ws_whale_alerts(websocket: WebSocket):
+    """WebSocket for real-time whale alerts."""
+    await manager.connect(websocket)
+    try:
+        last_seen = set()
+        while True:
+            # Poll for new whale trades every 30 seconds
+            whales = await get_whale_trades(1000)
+            for whale in whales[:10]:
+                tx = whale.get("tx_hash")
+                if tx and tx not in last_seen:
+                    last_seen.add(tx)
+                    await websocket.send_json(whale)
+            
+            # Keep only last 100 tx hashes
+            if len(last_seen) > 100:
+                last_seen = set(list(last_seen)[-50:])
+            
+            await asyncio.sleep(30)
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
 
 
 @app.get("/api/profile/{identifier}")

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { api } from './api/client'
 
 // ============================================================================
@@ -90,7 +90,6 @@ function StatsBar({ stats }) {
 function CoinRow({ coin, rank }) {
   const change = coin.market_cap_delta_24h
   const isPositive = change && change > 0
-  const changeText = isPositive ? 'increased' : 'decreased'
   
   return (
     <tr>
@@ -98,19 +97,9 @@ function CoinRow({ coin, rank }) {
       <td>
         <div className="coin-row">
           {coin.image ? (
-            <img 
-              src={coin.image} 
-              alt={`${coin.name} logo`} 
-              className="avatar"
-              loading="lazy"
-            />
+            <img src={coin.image} alt={`${coin.name} logo`} className="avatar" loading="lazy" />
           ) : (
-            <div 
-              className="avatar" 
-              style={{ background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}
-              role="img"
-              aria-label={`${coin.name} placeholder`}
-            >
+            <div className="avatar" style={{ background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }} role="img" aria-label={`${coin.name} placeholder`}>
               {coin.symbol?.charAt(0)}
             </div>
           )}
@@ -123,10 +112,7 @@ function CoinRow({ coin, rank }) {
       <td className="font-mono">{formatNumber(coin.market_cap)}</td>
       <td className="font-mono text-secondary">{formatNumber(coin.volume_24h)}</td>
       <td>
-        <span 
-          className={`change ${isPositive ? 'positive' : 'negative'}`}
-          aria-label={`Market cap ${changeText} by ${formatChange(Math.abs(change))}`}
-        >
+        <span className={`change ${isPositive ? 'positive' : 'negative'}`}>
           {formatChange(change)}
         </span>
       </td>
@@ -181,20 +167,6 @@ function CoinsTable({ coins, title }) {
   )
 }
 
-function TraderRow({ trader, rank }) {
-  return (
-    <tr>
-      <td><span className="rank" aria-label={`Rank ${rank}`}>{rank}</span></td>
-      <td>
-        <span style={{ fontWeight: 500 }}>@{trader.handle || 'anon'}</span>
-      </td>
-      <td className="font-mono">{trader.score?.toLocaleString()}</td>
-      <td className="font-mono">{formatNumber(trader.volume_usd)}</td>
-      <td className="font-mono text-secondary">{trader.trades_count?.toLocaleString()}</td>
-    </tr>
-  )
-}
-
 function TradersTable({ traders }) {
   if (!traders || traders.length === 0) {
     return <div className="loading" role="status">No data available</div>
@@ -221,8 +193,242 @@ function TradersTable({ traders }) {
           </thead>
           <tbody>
             {traders.map((trader, i) => (
-              <TraderRow key={trader.handle || i} trader={trader} rank={i + 1} />
+              <tr key={trader.handle || i}>
+                <td><span className="rank">{i + 1}</span></td>
+                <td style={{ fontWeight: 500 }}>@{trader.handle || 'anon'}</td>
+                <td className="font-mono">{trader.score?.toLocaleString()}</td>
+                <td className="font-mono">{formatNumber(trader.volume_usd)}</td>
+                <td className="font-mono text-secondary">{trader.trades_count?.toLocaleString()}</td>
+              </tr>
             ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+// ============================================================================
+// Topics/Categories View
+// ============================================================================
+
+function TopicsView({ topics }) {
+  if (!topics || topics.length === 0) {
+    return <div className="loading" role="status">No topics available</div>
+  }
+
+  return (
+    <div className="grid-2">
+      {topics.map((topic) => (
+        <section key={topic.topic} className="card" aria-label={`${topic.topic} category`}>
+          <div className="card-header">
+            <h2 style={{ fontWeight: 600, fontSize: 'inherit', margin: 0 }}>
+              {topic.topic}
+            </h2>
+            <span className="text-muted">{topic.coin_count} coins</span>
+          </div>
+          <div className="card-body">
+            <div style={{ display: 'flex', gap: 24, marginBottom: 16 }}>
+              <div>
+                <p className="stat-label">Volume 24h</p>
+                <p className="font-mono" style={{ fontSize: 18, fontWeight: 600 }}>
+                  {formatNumber(topic.total_volume_24h)}
+                </p>
+              </div>
+              <div>
+                <p className="stat-label">Market Cap</p>
+                <p className="font-mono" style={{ fontSize: 18, fontWeight: 600 }}>
+                  {formatNumber(topic.total_market_cap)}
+                </p>
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {topic.top_coins?.slice(0, 5).map((coin, i) => (
+                <div key={coin.address} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: i < 4 ? '1px solid var(--border)' : 'none' }}>
+                  <span className="rank">{i + 1}</span>
+                  {coin.image ? (
+                    <img src={coin.image} alt="" className="avatar-sm" loading="lazy" />
+                  ) : (
+                    <div className="avatar-sm" style={{ background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10 }}>
+                      {coin.symbol?.charAt(0)}
+                    </div>
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{coin.name}</div>
+                  </div>
+                  <span className="font-mono text-secondary">{formatNumber(coin.volume_24h)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      ))}
+    </div>
+  )
+}
+
+// ============================================================================
+// Creators/Earnings View
+// ============================================================================
+
+function CreatorsTable({ creators }) {
+  if (!creators || creators.length === 0) {
+    return <div className="loading" role="status">No data available</div>
+  }
+  
+  return (
+    <section className="card" style={{ overflow: 'hidden' }} aria-label="Top creators by earnings">
+      <div className="card-header">
+        <h2 style={{ fontWeight: 600, fontSize: 'inherit', margin: 0 }}>
+          <span aria-hidden="true">💰</span> Top Creators by Earnings
+        </h2>
+        <span className="text-muted" aria-live="polite">{creators.length} creators</span>
+      </div>
+      <div style={{ overflowX: 'auto' }} tabIndex={0} role="region" aria-label="Scrollable table">
+        <table role="table">
+          <thead>
+            <tr>
+              <th scope="col">#</th>
+              <th scope="col">Creator</th>
+              <th scope="col">Est. Earnings</th>
+              <th scope="col">Total Volume</th>
+              <th scope="col">Vol 24h</th>
+              <th scope="col">Market Cap</th>
+              <th scope="col">Holders</th>
+            </tr>
+          </thead>
+          <tbody>
+            {creators.map((creator, i) => (
+              <tr key={creator.address || i}>
+                <td><span className="rank">{i + 1}</span></td>
+                <td>
+                  <div className="coin-row">
+                    {creator.avatar ? (
+                      <img src={creator.avatar} alt="" className="avatar" loading="lazy" />
+                    ) : (
+                      <div className="avatar" style={{ background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>
+                        {creator.handle?.charAt(0)?.toUpperCase() || '?'}
+                      </div>
+                    )}
+                    <div className="coin-info">
+                      <div className="coin-name">@{creator.handle || 'anon'}</div>
+                      {creator.twitter && <div className="coin-symbol">@{creator.twitter}</div>}
+                    </div>
+                  </div>
+                </td>
+                <td className="font-mono text-green" style={{ fontWeight: 600 }}>
+                  {formatNumber(creator.estimated_earnings)}
+                </td>
+                <td className="font-mono">{formatNumber(creator.total_volume)}</td>
+                <td className="font-mono text-secondary">{formatNumber(creator.volume_24h)}</td>
+                <td className="font-mono text-secondary">{formatNumber(creator.market_cap)}</td>
+                <td className="text-secondary">{creator.unique_holders?.toLocaleString() || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+// ============================================================================
+// Whale Alerts View
+// ============================================================================
+
+function WhalesView({ whales, liveAlerts }) {
+  const allWhales = [...liveAlerts, ...(whales || [])].slice(0, 50)
+  
+  if (allWhales.length === 0) {
+    return <div className="loading" role="status">No whale trades found</div>
+  }
+  
+  return (
+    <section className="card" style={{ overflow: 'hidden' }} aria-label="Whale trades">
+      <div className="card-header">
+        <h2 style={{ fontWeight: 600, fontSize: 'inherit', margin: 0 }}>
+          <span aria-hidden="true">🐋</span> Whale Alerts
+          {liveAlerts.length > 0 && (
+            <span style={{ 
+              marginLeft: 12, 
+              padding: '2px 8px', 
+              background: 'var(--green)', 
+              color: 'white', 
+              borderRadius: 4, 
+              fontSize: 11, 
+              fontWeight: 500 
+            }}>
+              LIVE
+            </span>
+          )}
+        </h2>
+        <span className="text-muted">Trades ≥ $1,000</span>
+      </div>
+      <div style={{ overflowX: 'auto' }} tabIndex={0} role="region" aria-label="Scrollable table">
+        <table role="table">
+          <thead>
+            <tr>
+              <th scope="col">Type</th>
+              <th scope="col">Coin</th>
+              <th scope="col">Amount</th>
+              <th scope="col">Trader</th>
+              <th scope="col">Time</th>
+              <th scope="col">Tx</th>
+            </tr>
+          </thead>
+          <tbody>
+            {allWhales.map((whale, i) => {
+              const isBuy = whale.type === 'BUY'
+              const isNew = liveAlerts.includes(whale)
+              return (
+                <tr key={whale.tx_hash || i} style={isNew ? { background: 'var(--green-bg)' } : {}}>
+                  <td>
+                    <span 
+                      style={{ 
+                        padding: '4px 8px', 
+                        borderRadius: 4, 
+                        fontSize: 12, 
+                        fontWeight: 600,
+                        background: isBuy ? 'var(--green-bg)' : 'var(--red-bg)',
+                        color: isBuy ? 'var(--green)' : 'var(--red)',
+                      }}
+                    >
+                      {whale.type}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="coin-row">
+                      {whale.coin?.image && (
+                        <img src={whale.coin.image} alt="" className="avatar-sm" loading="lazy" />
+                      )}
+                      <span className="coin-name">{whale.coin?.name || '—'}</span>
+                    </div>
+                  </td>
+                  <td className="font-mono" style={{ fontWeight: 600 }}>
+                    {formatNumber(whale.amount_usd)}
+                  </td>
+                  <td className="text-secondary">
+                    {whale.trader_handle ? `@${whale.trader_handle}` : whale.trader_address?.slice(0, 8) + '…'}
+                  </td>
+                  <td className="text-muted">{timeAgo(whale.timestamp)}</td>
+                  <td>
+                    {whale.tx_hash && (
+                      <a 
+                        href={`https://basescan.org/tx/${whale.tx_hash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn"
+                        style={{ padding: '4px 8px', minHeight: 'auto', fontSize: 11 }}
+                        aria-label="View transaction on Basescan"
+                      >
+                        View <span aria-hidden="true">↗</span>
+                      </a>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
@@ -236,11 +442,14 @@ function TradersTable({ traders }) {
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: null },
+  { id: 'topics', label: 'Topics', icon: '📁' },
   { id: 'gainers', label: 'Top Gainers', icon: '🚀' },
   { id: 'volume', label: 'Top Volume', icon: '📊' },
   { id: 'valuable', label: 'Most Valuable', icon: '💎' },
   { id: 'new', label: 'New Coins', icon: '🆕' },
+  { id: 'creators', label: 'Creators', icon: '💰' },
   { id: 'traders', label: 'Traders', icon: '🏆' },
+  { id: 'whales', label: 'Whales', icon: '🐋' },
 ]
 
 function TabNav({ activeTab, onChange }) {
@@ -266,7 +475,7 @@ function TabNav({ activeTab, onChange }) {
 
   return (
     <nav aria-label="Dashboard sections" style={{ marginBottom: 24 }}>
-      <div className="nav-tabs" role="tablist" style={{ width: 'fit-content' }}>
+      <div className="nav-tabs" role="tablist" style={{ width: 'fit-content', flexWrap: 'wrap' }}>
         {TABS.map(tab => (
           <button
             key={tab.id}
@@ -288,6 +497,157 @@ function TabNav({ activeTab, onChange }) {
 }
 
 // ============================================================================
+// Overview Mini Tables
+// ============================================================================
+
+function OverviewSection({ data }) {
+  return (
+    <>
+      <StatsBar stats={data.overview?.stats} />
+      
+      <div className="grid-2" style={{ marginBottom: 24 }}>
+        <section className="card" aria-label="Top gainers today">
+          <div className="card-header">
+            <h2 style={{ fontWeight: 600, fontSize: 'inherit', margin: 0 }}>
+              <span aria-hidden="true">🚀</span> Top Gainers (24h)
+            </h2>
+          </div>
+          <div style={{ overflowX: 'auto' }} tabIndex={0} role="region" aria-label="Scrollable table">
+            <table role="table">
+              <thead>
+                <tr>
+                  <th scope="col">#</th>
+                  <th scope="col">Coin</th>
+                  <th scope="col">MCap</th>
+                  <th scope="col">24h Change</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.overview?.top_gainers?.map((coin, i) => (
+                  <tr key={coin.address}>
+                    <td><span className="rank">{i + 1}</span></td>
+                    <td>
+                      <div className="coin-row">
+                        {coin.image && <img src={coin.image} alt="" className="avatar-sm" loading="lazy" />}
+                        <span className="coin-name">{coin.name}</span>
+                      </div>
+                    </td>
+                    <td className="font-mono">{formatNumber(coin.market_cap)}</td>
+                    <td className="change positive">{formatChange(coin.market_cap_delta_24h)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        
+        <section className="card" aria-label="Top volume today">
+          <div className="card-header">
+            <h2 style={{ fontWeight: 600, fontSize: 'inherit', margin: 0 }}>
+              <span aria-hidden="true">📊</span> Top Volume (24h)
+            </h2>
+          </div>
+          <div style={{ overflowX: 'auto' }} tabIndex={0} role="region" aria-label="Scrollable table">
+            <table role="table">
+              <thead>
+                <tr>
+                  <th scope="col">#</th>
+                  <th scope="col">Coin</th>
+                  <th scope="col">Volume</th>
+                  <th scope="col">MCap</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.overview?.top_volume?.map((coin, i) => (
+                  <tr key={coin.address}>
+                    <td><span className="rank">{i + 1}</span></td>
+                    <td>
+                      <div className="coin-row">
+                        {coin.image && <img src={coin.image} alt="" className="avatar-sm" loading="lazy" />}
+                        <span className="coin-name">{coin.name}</span>
+                      </div>
+                    </td>
+                    <td className="font-mono">{formatNumber(coin.volume_24h)}</td>
+                    <td className="font-mono text-secondary">{formatNumber(coin.market_cap)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+      
+      <div className="grid-2">
+        <section className="card" aria-label="Most valuable coins">
+          <div className="card-header">
+            <h2 style={{ fontWeight: 600, fontSize: 'inherit', margin: 0 }}>
+              <span aria-hidden="true">💎</span> Most Valuable
+            </h2>
+          </div>
+          <div style={{ overflowX: 'auto' }} tabIndex={0} role="region" aria-label="Scrollable table">
+            <table role="table">
+              <thead>
+                <tr>
+                  <th scope="col">#</th>
+                  <th scope="col">Coin</th>
+                  <th scope="col">MCap</th>
+                  <th scope="col">Holders</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.overview?.most_valuable?.map((coin, i) => (
+                  <tr key={coin.address}>
+                    <td><span className="rank">{i + 1}</span></td>
+                    <td>
+                      <div className="coin-row">
+                        {coin.image && <img src={coin.image} alt="" className="avatar-sm" loading="lazy" />}
+                        <span className="coin-name">{coin.name}</span>
+                      </div>
+                    </td>
+                    <td className="font-mono">{formatNumber(coin.market_cap)}</td>
+                    <td className="text-secondary">{coin.unique_holders?.toLocaleString() || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        
+        <section className="card" aria-label="Top traders">
+          <div className="card-header">
+            <h2 style={{ fontWeight: 600, fontSize: 'inherit', margin: 0 }}>
+              <span aria-hidden="true">🏆</span> Top Traders
+            </h2>
+          </div>
+          <div style={{ overflowX: 'auto' }} tabIndex={0} role="region" aria-label="Scrollable table">
+            <table role="table">
+              <thead>
+                <tr>
+                  <th scope="col">#</th>
+                  <th scope="col">Trader</th>
+                  <th scope="col">Score</th>
+                  <th scope="col">Volume</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.overview?.top_traders?.map((trader, i) => (
+                  <tr key={trader.handle || i}>
+                    <td><span className="rank">{i + 1}</span></td>
+                    <td style={{ fontWeight: 500 }}>@{trader.handle || 'anon'}</td>
+                    <td className="font-mono">{trader.score?.toLocaleString()}</td>
+                    <td className="font-mono text-secondary">{formatNumber(trader.volume_usd)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </>
+  )
+}
+
+// ============================================================================
 // Main App
 // ============================================================================
 
@@ -296,6 +656,36 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState({})
   const [error, setError] = useState(null)
+  const [liveAlerts, setLiveAlerts] = useState([])
+  const wsRef = useRef(null)
+
+  // WebSocket for whale alerts
+  useEffect(() => {
+    if (activeTab === 'whales') {
+      try {
+        const wsUrl = api.getWhaleWsUrl()
+        wsRef.current = new WebSocket(wsUrl)
+        
+        wsRef.current.onmessage = (event) => {
+          const whale = JSON.parse(event.data)
+          setLiveAlerts(prev => [whale, ...prev].slice(0, 20))
+        }
+        
+        wsRef.current.onerror = () => {
+          console.log('WebSocket not available, using polling')
+        }
+      } catch (e) {
+        console.log('WebSocket connection failed')
+      }
+    }
+    
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close()
+        wsRef.current = null
+      }
+    }
+  }, [activeTab])
 
   useEffect(() => {
     async function fetchData() {
@@ -305,6 +695,9 @@ export default function App() {
         if (activeTab === 'overview') {
           const overview = await api.getOverview()
           setData({ overview })
+        } else if (activeTab === 'topics') {
+          const topics = await api.getTopics()
+          setData({ topics })
         } else if (activeTab === 'gainers') {
           const coins = await api.getTopGainers(50)
           setData({ coins })
@@ -317,9 +710,16 @@ export default function App() {
         } else if (activeTab === 'new') {
           const coins = await api.getNewCoins(50)
           setData({ coins })
+        } else if (activeTab === 'creators') {
+          const creators = await api.getCreators(50)
+          setData({ creators })
         } else if (activeTab === 'traders') {
           const traders = await api.getTraders(100)
           setData({ traders })
+        } else if (activeTab === 'whales') {
+          const whales = await api.getWhales(1000)
+          setData({ whales })
+          setLiveAlerts([])
         }
       } catch (e) {
         console.error('Fetch error:', e)
@@ -354,171 +754,15 @@ export default function App() {
               Loading…
             </div>
           ) : activeTab === 'overview' ? (
-            <>
-              <StatsBar stats={data.overview?.stats} />
-              
-              <div className="grid-2" style={{ marginBottom: 24 }}>
-                <section className="card" aria-label="Top gainers today">
-                  <div className="card-header">
-                    <h2 style={{ fontWeight: 600, fontSize: 'inherit', margin: 0 }}>
-                      <span aria-hidden="true">🚀</span> Top Gainers (24h)
-                    </h2>
-                  </div>
-                  <div style={{ overflowX: 'auto' }} tabIndex={0} role="region" aria-label="Scrollable table">
-                    <table role="table">
-                      <thead>
-                        <tr>
-                          <th scope="col">#</th>
-                          <th scope="col">Coin</th>
-                          <th scope="col">MCap</th>
-                          <th scope="col">24h Change</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.overview?.top_gainers?.map((coin, i) => (
-                          <tr key={coin.address}>
-                            <td><span className="rank">{i + 1}</span></td>
-                            <td>
-                              <div className="coin-row">
-                                {coin.image && (
-                                  <img 
-                                    src={coin.image} 
-                                    alt={`${coin.name} logo`} 
-                                    className="avatar-sm"
-                                    loading="lazy"
-                                  />
-                                )}
-                                <span className="coin-name">{coin.name}</span>
-                              </div>
-                            </td>
-                            <td className="font-mono">{formatNumber(coin.market_cap)}</td>
-                            <td className="change positive">{formatChange(coin.market_cap_delta_24h)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-                
-                <section className="card" aria-label="Top volume today">
-                  <div className="card-header">
-                    <h2 style={{ fontWeight: 600, fontSize: 'inherit', margin: 0 }}>
-                      <span aria-hidden="true">📊</span> Top Volume (24h)
-                    </h2>
-                  </div>
-                  <div style={{ overflowX: 'auto' }} tabIndex={0} role="region" aria-label="Scrollable table">
-                    <table role="table">
-                      <thead>
-                        <tr>
-                          <th scope="col">#</th>
-                          <th scope="col">Coin</th>
-                          <th scope="col">Volume</th>
-                          <th scope="col">MCap</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.overview?.top_volume?.map((coin, i) => (
-                          <tr key={coin.address}>
-                            <td><span className="rank">{i + 1}</span></td>
-                            <td>
-                              <div className="coin-row">
-                                {coin.image && (
-                                  <img 
-                                    src={coin.image} 
-                                    alt={`${coin.name} logo`} 
-                                    className="avatar-sm"
-                                    loading="lazy"
-                                  />
-                                )}
-                                <span className="coin-name">{coin.name}</span>
-                              </div>
-                            </td>
-                            <td className="font-mono">{formatNumber(coin.volume_24h)}</td>
-                            <td className="font-mono text-secondary">{formatNumber(coin.market_cap)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-              </div>
-              
-              <div className="grid-2">
-                <section className="card" aria-label="Most valuable coins">
-                  <div className="card-header">
-                    <h2 style={{ fontWeight: 600, fontSize: 'inherit', margin: 0 }}>
-                      <span aria-hidden="true">💎</span> Most Valuable
-                    </h2>
-                  </div>
-                  <div style={{ overflowX: 'auto' }} tabIndex={0} role="region" aria-label="Scrollable table">
-                    <table role="table">
-                      <thead>
-                        <tr>
-                          <th scope="col">#</th>
-                          <th scope="col">Coin</th>
-                          <th scope="col">MCap</th>
-                          <th scope="col">Holders</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.overview?.most_valuable?.map((coin, i) => (
-                          <tr key={coin.address}>
-                            <td><span className="rank">{i + 1}</span></td>
-                            <td>
-                              <div className="coin-row">
-                                {coin.image && (
-                                  <img 
-                                    src={coin.image} 
-                                    alt={`${coin.name} logo`} 
-                                    className="avatar-sm"
-                                    loading="lazy"
-                                  />
-                                )}
-                                <span className="coin-name">{coin.name}</span>
-                              </div>
-                            </td>
-                            <td className="font-mono">{formatNumber(coin.market_cap)}</td>
-                            <td className="text-secondary">{coin.unique_holders?.toLocaleString() || '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-                
-                <section className="card" aria-label="Top traders">
-                  <div className="card-header">
-                    <h2 style={{ fontWeight: 600, fontSize: 'inherit', margin: 0 }}>
-                      <span aria-hidden="true">🏆</span> Top Traders
-                    </h2>
-                  </div>
-                  <div style={{ overflowX: 'auto' }} tabIndex={0} role="region" aria-label="Scrollable table">
-                    <table role="table">
-                      <thead>
-                        <tr>
-                          <th scope="col">#</th>
-                          <th scope="col">Trader</th>
-                          <th scope="col">Score</th>
-                          <th scope="col">Volume</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.overview?.top_traders?.map((trader, i) => (
-                          <tr key={trader.handle || i}>
-                            <td><span className="rank">{i + 1}</span></td>
-                            <td style={{ fontWeight: 500 }}>@{trader.handle || 'anon'}</td>
-                            <td className="font-mono">{trader.score?.toLocaleString()}</td>
-                            <td className="font-mono text-secondary">{formatNumber(trader.volume_usd)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-              </div>
-            </>
+            <OverviewSection data={data} />
+          ) : activeTab === 'topics' ? (
+            <TopicsView topics={data.topics} />
+          ) : activeTab === 'creators' ? (
+            <CreatorsTable creators={data.creators} />
           ) : activeTab === 'traders' ? (
             <TradersTable traders={data.traders} />
+          ) : activeTab === 'whales' ? (
+            <WhalesView whales={data.whales} liveAlerts={liveAlerts} />
           ) : (
             <CoinsTable 
               coins={data.coins} 
